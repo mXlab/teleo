@@ -9,6 +9,13 @@ import webrtcvad
 
 HUGGING_FACE_AUTH_TOKEN=""
 
+# Parameters
+sample_rate = 16000  # Audio sample rate
+duration = 10  # Duration of audio chunks in seconds
+frame_duration = 0.02  # Frame duration in seconds (20 ms)
+frame_samples = int(sample_rate * frame_duration)  # Number of samples per frame
+channels = 1  # Mono audio
+
 # VAD setup
 vad = webrtcvad.Vad()
 # Set aggressiveness from 0 to 3 (3 is the most aggressive)
