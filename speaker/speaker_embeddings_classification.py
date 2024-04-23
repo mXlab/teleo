@@ -13,8 +13,10 @@ device
 
 # Create data.
 speakers = ['1-Victor', '2-Sofian', '3-Etienne', '4-Natalia']
-# type of model
-regression_model = True
+# Type of model.
+regression_model = False
+# Classification/regression model filename.
+model_filename = 'trustnet.pt'
 
 class Data(Dataset):
   def __init__(self, X_train, y_train):
@@ -34,7 +36,8 @@ class Data(Dataset):
 # number of features (len of X cols)
 input_dim = 512
 # number of hidden neurons
-hidden_dim = 128
+hidden_dim = 32
+hidden_dim2 = 32
 # number of classes (unique of y)
 n_classes = len(speakers)
 
@@ -48,12 +51,11 @@ vad_model = malaya_speech.vad.deep_model(model='vggvox-v2', quantized=True)
 
 # Create a classifier model with one hidden layer with RELU activation, for classifying the speaker vectors.
 if regression_model:
-  hidden_dim2 = int(hidden_dim/2)
   trustnet = nn.Sequential(
     nn.Linear(input_dim, hidden_dim),
     nn.ReLU(),
     nn.Linear(hidden_dim, hidden_dim2),
-    nn.ReLU(),
+    nn.Sigmoid(),
     nn.Linear(hidden_dim2, 1))
 else:
   trustnet = nn.Sequential(
@@ -92,7 +94,7 @@ else:
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.SGD(trustnet.parameters(), lr=0.1)
 
-epochs = 20
+epochs = 100
 for epoch in range(epochs):
   running_loss = 0.0
   for i, data in enumerate(trainloader, 0):
@@ -126,15 +128,21 @@ with torch.no_grad():
     # get the predictions
     if regression_model:
       predicted = torch.round(outputs.data).flatten()
+      correct += labels.size(0) - np.abs(predicted - labels).sum().item() / n_classes
     else:
       __, predicted = torch.max(outputs.data, 1)
-    # update results
+      # update results., 2.]) te
+      correct += (predicted == labels).sum().item()
     total += labels.size(0)
-    correct += (predicted == labels).sum().item()
     
-    # print(inputs, labels, outputs, outputs.data, predicted, correct, total, predicted == labels, (predicted == labels).sum())
+    # print(inputs, labels, outputs, outputs.data, predicted, correct, total, predicted == labels, (predicted == labels).sum(), np.abs(predicted-labels), np.abs(predicted-labels).sum())
 
 print(f'Accuracy of the network on the {len(testdata)} test data: {100 * correct // total} %')
+
+
+# Save trustnet model.
+print("Saving model")
+torch.save(trustnet.state_dict(), model_filename)
 
 # # print(r['speaker-vector'])
 
