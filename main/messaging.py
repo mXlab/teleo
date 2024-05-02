@@ -20,7 +20,14 @@ class OscHelper:
         self.client = udp_client.SimpleUDPClient(ip, int(send_port))
 
         osc_udp_server("0.0.0.0", int(recv_port), self.server_name())
+
         self.maps = {}
+
+        # Init OSC.
+        osc_startup()
+
+        # Send all paths to the dispatch() method with information.
+        osc_method("*", self.dispatch, argscheme=osm.OSCARG_ADDRESS + osm.OSCARG_SRCIDENT + osm.OSCARG_DATA)
 
     def client_name(self):
         return self.name + "_client"
@@ -53,6 +60,9 @@ class OscHelper:
 
     # Dispatches OSC message to appropriate function, if it corresponds to helper.
     def dispatch(self, address, ip, data):
+        # If ip is tuple, take first part of tuple.
+        if isinstance(ip, tuple):
+            ip = ip[0]
         # Check if address matches and if IP corresponds: if so, call mapped function.
         if address in self.maps and (ip == self.ip or (ip == '127.0.0.1' and self.ip == 'localhost')):
             item = self.maps[address]
@@ -61,6 +71,9 @@ class OscHelper:
                 func(data)
             else:
                 func(data, item['extra'])
+    
+    def loop(self):
+        osc_process()
 
 class MisBKit:
     def __init__(self, id, **settings):
@@ -69,12 +82,6 @@ class MisBKit:
         self.is_paired = None
         self.motor_ids = None
         
-        # Init OSC.
-        osc_startup()
-
-        # Send all paths to the dispatch() method with information.
-        osc_method("*", self.dispatch, argscheme=osm.OSCARG_ADDRESS + osm.OSCARG_SRCIDENT + osm.OSCARG_DATA)
-
         # Create array of OscHelper objects for communicating with the robots.
         name = "mbk-" + str(id).zfill(2)
         ip = settings.get('ip', "192.168.0." + str(15 + id))
@@ -99,7 +106,7 @@ class MisBKit:
         self.osc_helper.dispatch(address, ip, data)
 
     def loop(self):
-        osc_process()
+        self.osc_helper.loop()
 
     def begin(self):
         print("Begin, check is paired")
@@ -143,27 +150,27 @@ class MisBKit:
 
     # Control.
 
-    def scan():
+    def scan(self):
         self.send("/scan")
 
-    def stop_all():
+    def stop_all(self):
         self.send("/stop-all")
 
-    def reboot():
+    def reboot(self):
         self.send("/reboot")
 
     # Motors.
 
-    def wheel(motor_id, speed):
+    def wheel(self, motor_id, speed):
         self.send("/set/motor/wheel", motor_id, speed)
 
-    def joint(motor_id, speed):
+    def joint(self, motor_id, speed):
         self.send("/set/motor/joint", motor_id, speed)
 
-    def speed(motor_id, speed):
+    def speed(self, motor_id, speed):
         self.send("/set/motor/speed", motor_id, speed)
 
-    def stop(motor_id):
+    def stop(self, motor_id):
         self.send("/set/motor/stop", motor_id)
 
     # def get_temperature(get_temperature):
