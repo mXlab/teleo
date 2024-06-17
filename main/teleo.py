@@ -145,8 +145,10 @@ class Agent:
     values = []
     for action in range(AgentAction.N_ACTIONS):
       values.append(self.evaluate(state, action))
-    values = np.array(values)
 
+    self.oscHelper.send_message("/action-values", values)
+
+    values = np.array(values)
     print("Values: " + str(values)) 
 
     # Choose action.
@@ -186,7 +188,14 @@ class Agent:
     # Return value.
     return value
 
-  
+  def sendState(self):
+    self.oscHelper.send_bundle({
+      "/trust": self.trust,
+      "/happiness": self.happiness,
+      "/curiosity": self.curiosity,
+      "/state": self.state
+    })
+
   def debug(self):
     print("AGENT =====================")
     print("trust: " + str(self.trust))
@@ -265,4 +274,5 @@ if __name__ == '__main__':
 
     while True:
         agent.step()
+        agent.sendState()
 
