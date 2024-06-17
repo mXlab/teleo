@@ -136,7 +136,8 @@ class Agent:
     # Update state values using moving average.
     self.stateValues[self.state.value] -= alpha * (self.stateValues[self.state.value] - value)
 
-  def receivePleasure(self, p):
+  def receivePleasure(self, data):
+    p = data[0]
     self.currentPleasure = np.clip(p, -1, +1)
 
   def chooseAction(self, state):
