@@ -45,7 +45,6 @@ class OscHelper:
     def send_bundle(self, messages):
         bundle = osc_bundle_builder.OscBundleBuilder(osc_bundle_builder.IMMEDIATELY)
         for path, args in messages.items():
-            print("Sending bundle with {}".format(path))
             if not isinstance(args, list):
                 args = [ args ]
             msg_builder = osc_message_builder.OscMessageBuilder(address=path)
