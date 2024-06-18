@@ -33,8 +33,8 @@ class Agent:
     self.learningRate = 0.1
 
     self.rewardWeightState  = 0.3
-    self.rewardWeightAction = 0.1
-    self.rewardWeightTrust  = 0.6
+    self.rewardWeightAction = 0.4
+    self.rewardWeightTrust  = 0.3
 
     self.initialize()
 
@@ -43,7 +43,7 @@ class Agent:
     # Init properties.
     self.happiness = 0
     self.curiosity = 0
-    self.trust     = 0
+    self.trust     = 0.5
     # Init priors.
     self.stateValues = np.full(AgentState.N_STATES, 0)
     # Starting state.
@@ -69,15 +69,19 @@ class Agent:
 
     # Pleasure makes happiness.
     reward = pleasure
-
+    
     # In the OPENED state the agent is relaxed, more pleasurable but also more vulnerable.
     if self.state == AgentState.OPENED:
       
       # If I am open and I get positive pleasure, I become more trusting.
       if pleasure > 0:
-        self.addTrust(0.1)
+        self.addTrust(0.1 * pleasure)
       elif pleasure < 0:
-        self.addTrust(-0.2)
+        self.addTrust(0.2 * pleasure)
+      else:
+        reward -= 0.05
+
+      self.addCuriosity(-0.05)
 
       # self.learn(self.trust)
 
@@ -88,9 +92,10 @@ class Agent:
     # In the CLOSED state the agent is more tense, less pleasurable but also less vulnerable.
     else:
       # Slowly decrease happiness (energy consumption).
-      reward -= 0.1
+      reward -= 0.01
 
       # # Slowly increase curiosity.
+      self.addCuriosity(0.01);
       # self.addCuriosity(np.random.uniform(0, 0.2))
 
       # # If I trust more than my happiness, open up!
@@ -99,6 +104,7 @@ class Agent:
       #   self.open()
 
     # Update.
+    print(" pleasure: " + str(reward))
     self.addHappiness(reward)
     self.updateStateValue(reward)
 
@@ -110,10 +116,10 @@ class Agent:
 
     # Switch state.
     self.state = AgentState.switch(self.state) if action == AgentAction.CHANGE else self.state
-    if action == AgentAction.CHANGE:
-      self.curiosity = 0
-    else:
-      self.addCuriosity(0.1)
+    # if action == AgentAction.CHANGE:
+    #   self.curiosity = 0
+    # else:
+    #   self.addCuriosity(0.1)
 
     # Wait.
     startTime = time.time()
@@ -168,17 +174,19 @@ class Agent:
 
     # The CHANGE action is more likely to be taken if I am curious.
     if action == AgentAction.CHANGE:
+
       if nextState == AgentState.OPENED:
         actionReward = self.curiosity
       else:  # curiosity drives me only parially if I am going to be CLOSED
-        actionReward = 0.6 * self.curiosity
+        actionReward = 0.5 - self.curiosity
+
     # The STAY action is NOT driven by curiosity but by preserving energy.
     else:
       actionReward = 0.5 # costs less energy
     value += self.rewardWeightAction * actionReward
 
     # Contribution of trust: actions leading to OPENED are more likely to be taken if I am trustful.
-    trustContribution = self.rewardWeightTrust * self.trust 
+    trustContribution = self.rewardWeightTrust * np.interp(self.trust, [0, 1], [-1, 1])
     # Trust contribution is inverted if next state is CLOSED.
     if nextState == AgentState.CLOSED:
       trustContribution *= -1
@@ -205,8 +213,8 @@ class Agent:
     print("state values: " + str(self.stateValues))
     print()          
   
-  def propertyAdd(self, original, variationPerSecond):
-    return np.clip(original + variationPerSecond / self.stepsPerSecond, 0, 1)
+  def propertyAdd(self, original, variationPerSecond, min=0, max=1):
+    return np.clip(original + variationPerSecond / self.stepsPerSecond, min, max)
   
   def addTrust(self, variationPerSecond):
     self.trust = self.propertyAdd(self.trust, variationPerSecond)
@@ -215,7 +223,7 @@ class Agent:
     self.happiness = self.propertyAdd(self.happiness, variationPerSecond)
 
   def addCuriosity(self, variationPerSecond):
-    self.curiosity = self.propertyAdd(self.curiosity, variationPerSecond)
+    self.curiosity = self.propertyAdd(self.curiosity, variationPerSecond, min=-5, max=5)
     
   def close(self):
     self.state = AgentState.CLOSED
