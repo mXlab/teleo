@@ -14,7 +14,7 @@ from pyannote.audio import Inference
 inference = Inference(model, window="whole")
 
 # Create data.
-filepaths = sorted(glob.glob("../speaker/Voices/split/*.wav"))
+filepaths = sorted(glob.glob("./Voices/split/*.wav"))
 
 embeddings = []
 

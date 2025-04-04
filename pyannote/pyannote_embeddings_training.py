@@ -96,7 +96,7 @@ else:
     nn.Sigmoid())
 
 # Usage
-file_paths = [ "../speaker/Voices/VOIX TELEO " + s + ".wav" for s in speakers ]
+file_paths = [ "./Voices/VOIX TELEO " + s + ".wav" for s in speakers ]
 dataset = SpeakerEmbeddingDataset(file_paths)
 
 # Assuming 'SpeakerEmbeddingDataset' has been defined and instantiated as 'dataset'
