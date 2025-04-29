@@ -27,6 +27,7 @@ class Agent:
       self.kit = MisBKit(kitId)
 
     self.oscHelper = OscHelper("teleo-agent", "localhost", send_port=8000, recv_port=8001)
+    self.oscHelper = OscHelper("teleo-agent", "192.168.0.255", send_port=8000, recv_port=8001)
     self.oscHelper.map("/pleasure", self.receivePleasure)
     # self.oscHelper.map("/trust", self.receiveTrust)
 
@@ -256,7 +257,7 @@ if __name__ == '__main__':
     # Create parser
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--kit-id", type=int, help="ID of the kit to run", default=0)
-    parser.add_argument("--simulation-mode", type=bool, help="Simulation mode (no MisBKit)", default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument("--simulation-mode", type=bool, help="Simulation mode (no MisBKit)", default=True, action=argparse.BooleanOptionalAction)
     parser.add_argument("--fps", type=int, help="Number of steps per second", default=5)
 
     # Parse arguments.
