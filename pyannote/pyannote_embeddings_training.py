@@ -20,11 +20,12 @@ regression_model = False
 model_filename = 'trustnet.pt'
 
 class SpeakerEmbeddingDataset(Dataset):
-    def __init__(self, file_paths, sample_rate=16000, chunk_duration=1.0):
+    def __init__(self, file_paths, sample_rate=16000, chunk_duration=1.0, chunk_overlap=0.0):
         super(SpeakerEmbeddingDataset, self).__init__()
         self.file_paths = file_paths
         self.sample_rate = sample_rate
         self.chunk_duration = chunk_duration
+        self.chunk_overlap = chunk_overlap
         self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=HUGGING_FACE_AUTH_TOKEN)
         self.inference = Inference(self.model, window="whole")
         self.vad = webrtcvad.Vad(3)
@@ -63,7 +64,8 @@ class SpeakerEmbeddingDataset(Dataset):
 
     def extract_chunks(self, audio):
         chunk_samples = int(self.sample_rate * self.chunk_duration)
-        return [audio[i:i + chunk_samples] for i in range(0, len(audio) - chunk_samples + 1, chunk_samples)]
+        chunk_samples_per_step = int(chunk_samples * (1 - self.chunk_overlap))
+        return [audio[i:i + chunk_samples] for i in range(0, len(audio) - chunk_samples + 1, chunk_samples_per_step)]
 
     def __len__(self):
         return len(self.embeddings)
@@ -97,7 +99,7 @@ else:
 
 # Usage
 file_paths = [ "./Voices/VOIX TELEO " + s + ".wav" for s in speakers ]
-dataset = SpeakerEmbeddingDataset(file_paths)
+dataset = SpeakerEmbeddingDataset(file_paths, chunk_duration=1, chunk_overlap=0.95)
 
 # Assuming 'SpeakerEmbeddingDataset' has been defined and instantiated as 'dataset'
 # Define the sizes for your train and test sets
@@ -120,7 +122,7 @@ else:
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.SGD(trustnet.parameters(), lr=0.1)
 
-epochs = 1000
+epochs = 100
 for epoch in range(epochs):
   running_loss = 0.0
   for i, data in enumerate(train_loader, 0):
