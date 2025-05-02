@@ -8,7 +8,8 @@ from pyannote.audio import Model, Inference
 import numpy as np
 import glob
 
-HUGGING_FACE_AUTH_TOKEN=""
+from teleospeaker import SpeakerEmbeddingDataset
+
 
 # Create data.
 speakers = ['1-Victor', '2-Sofian', '3-Etienne', '4-Natalia']
@@ -19,61 +20,6 @@ regression_model = False
 # Classification/regression model filename.
 model_filename = 'trustnet.pt'
 
-class SpeakerEmbeddingDataset(Dataset):
-    def __init__(self, file_paths, sample_rate=16000, chunk_duration=1.0, chunk_overlap=0.0):
-        super(SpeakerEmbeddingDataset, self).__init__()
-        self.file_paths = file_paths
-        self.sample_rate = sample_rate
-        self.chunk_duration = chunk_duration
-        self.chunk_overlap = chunk_overlap
-        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=HUGGING_FACE_AUTH_TOKEN)
-        self.inference = Inference(self.model, window="whole")
-        self.vad = webrtcvad.Vad(3)
-        self.embeddings, self.targets = self.preprocess_files()
-
-    def preprocess_files(self):
-        embeddings = []
-        targets = []
-        for i in range(len(self.file_paths)):
-            file_path = self.file_paths[i]
-            audio, sr = librosa.load(file_path, sr=self.sample_rate)
-            voiced_audio = self.apply_vad(audio)
-            chunks = self.extract_chunks(voiced_audio)
-            for chunk in chunks:
-                tensor_chunk = torch.tensor(chunk).unsqueeze(0).float()
-                embedding = self.inference({'waveform': tensor_chunk, 'sample_rate': self.sample_rate})
-                embeddings.append(embedding)
-                targets.append(i)
-        targets = np.asarray(targets)
-        if regression_model:
-            targets = torch.from_numpy(targets).type(torch.FloatTensor)
-        else:
-            targets = torch.from_numpy(targets).type(torch.LongTensor)
-        return embeddings, targets
-
-    def apply_vad(self, audio):
-        # Assuming the VAD splits are simple and based on 20 ms frames
-        frame_duration = 0.02  # 20 ms
-        frame_samples = int(self.sample_rate * frame_duration)
-        voiced_frames = []
-        for i in range(0, len(audio) - frame_samples + 1, frame_samples):
-            frame = audio[i:i+frame_samples]
-            if self.vad.is_speech((frame * 32767).astype(np.int16).tobytes(), self.sample_rate):
-                voiced_frames.append(frame)
-        return np.concatenate(voiced_frames)
-
-    def extract_chunks(self, audio):
-        chunk_samples = int(self.sample_rate * self.chunk_duration)
-        chunk_samples_per_step = int(chunk_samples * (1 - self.chunk_overlap))
-        return [audio[i:i + chunk_samples] for i in range(0, len(audio) - chunk_samples + 1, chunk_samples_per_step)]
-
-    def __len__(self):
-        return len(self.embeddings)
-
-    def __getitem__(self, idx):
-        return torch.tensor(self.embeddings[idx]), self.targets[idx]
-
-
 # number of features (len of X cols)
 input_dim = 512
 # number of hidden neurons
@@ -81,6 +27,8 @@ hidden_dim = 32
 hidden_dim2 = 16
 # number of classes (unique of y)
 n_classes = len(speakers)
+
+labels = range(n_classes)
 
 # Create a classifier model with one hidden layer with RELU activation, for classifying the speaker vectors.
 if regression_model:
@@ -99,7 +47,7 @@ else:
 
 # Usage
 file_paths = [ "./Voices/VOIX TELEO " + s + ".wav" for s in speakers ]
-dataset = SpeakerEmbeddingDataset(file_paths, chunk_duration=1, chunk_overlap=0.95)
+dataset = SpeakerEmbeddingDataset(file_paths, labels=labels, chunk_duration=1, chunk_overlap=0.95)
 
 # Assuming 'SpeakerEmbeddingDataset' has been defined and instantiated as 'dataset'
 # Define the sizes for your train and test sets
