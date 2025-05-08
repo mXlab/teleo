@@ -7,12 +7,17 @@ from pyannote.audio import Model, Inference
 import sounddevice as sd
 import time
 from queue import Queue
+import os
+import wave
+import csv
+import random
+from scipy.spatial.distance import cdist
 
 # Set the path to the Hugging Face authentication token
 HUGGING_FACE_AUTH_TOKEN = ""
 
 class SpeakerEmbeddingDataset(Dataset):
-    def __init__(self, file_paths, labels=False, sample_rate=16000, chunk_duration=1, chunk_overlap=0, regression_model=False):
+    def __init__(self, file_paths, labels=False, sample_rate=48000, chunk_duration=1, chunk_overlap=0, regression_model=False):
         super(SpeakerEmbeddingDataset, self).__init__()
         self.file_paths = file_paths
         self.labels = labels
@@ -77,7 +82,7 @@ class SpeakerEmbeddingDataset(Dataset):
             return torch.tensor(self.embeddings[idx])
 
 class SpeakerRealTimeProcessing:
-    def __init__(self, sample_rate=16000, duration=10, frame_duration=0.02, vad_mode=3, callback=None):
+    def __init__(self, sample_rate=48000, duration=3, frame_duration=0.02, vad_mode=3, callback=None):
         self.sample_rate = sample_rate
         self.duration = duration
         self.frame_duration = frame_duration
@@ -98,26 +103,48 @@ class SpeakerRealTimeProcessing:
         # Lazy assignment for stream so it can be stopped from outside
         self.stream = None
 
+    # Modify the save_audio_to_file method to update the CSV file
+    def save_audio_to_file(self, filename, audio_data):
+        with wave.open(filename, 'wb') as wf:
+            wf.setnchannels(1)  # Mono audio
+            wf.setsampwidth(2)  # 16-bit audio
+            wf.setframerate(self.sample_rate)
+            wf.writeframes((audio_data * 32767).astype(np.int16).tobytes())
+
+        # Add the new file to the CSV with a random label
+        csv_file_path = "Training/SoundsFilesClasser.csv"
+        label = random.randint(0, 2)  # Generate a random label between 0 and 2
+        with open(csv_file_path, 'a', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file)
+            csv_writer.writerow([os.path.basename(filename), label])
+
+    # Modify the audio_callback method to save audio
     def audio_callback(self, indata, frames, time_info, status):
         if status:
             print(status)
 
         if frames == self.frame_samples:
             audio_frame = (indata[:, 0] * 32767).astype(np.int16).tobytes()
-            is_speech = self.vad.is_speech(audio_frame, self.sample_rate)
-            if is_speech:
+            if self.vad.is_speech(audio_frame, self.sample_rate):
+                # Append incoming data to audio buffer.
                 self.audio_buffer = np.append(self.audio_buffer, indata[:, 0])
 
+                # If audio buffer is full, put it in the queue and save to file.
                 if len(self.audio_buffer) >= self.sample_rate * self.duration:
+                    # Put audio buffer in queue.
                     self.audio_queue.put(self.audio_buffer[:self.sample_rate * self.duration])
+                    # Save to file.
+                    filename = os.path.join("samples", f"recording_{int(time.time() * 1000)}.wav")
+                    self.save_audio_to_file(filename, self.audio_buffer[:self.sample_rate * self.duration])
+                    # Reset buffer.
                     self.audio_buffer = self.audio_buffer[self.sample_rate * self.duration:]
-                    print("Appended to audio queue")
 
     def process_audio(self, data):
         tensor_data = torch.tensor(data).unsqueeze(0).float()
-        embedding = self.inference({'waveform': tensor_data, 'sample_rate': self.sample_rate})
-        self.callback(embedding)
-
+        x = self.inference({'waveform': tensor_data, 'sample_rate': self.sample_rate})
+        if self.callback:
+            self.callback(x)
+    
     def run(self):
         print("Recording... Press Ctrl+C to stop.")
         with sd.InputStream(samplerate=self.sample_rate,
@@ -132,63 +159,63 @@ class SpeakerRealTimeProcessing:
                     time.sleep(0.1)
             except KeyboardInterrupt:
                 print("Stopped recording.")
+
+# Define the trust function based on label
+def trust(label):
+    return label - 1
+
+def remapTo01(x, from_min, from_max):
+    return (x - from_min) / (from_max - from_min)
+
+# Returns the similarity between two embeddings. Parameter y can be a list of embeddings.
+def similarity(x, y):
+    if x.ndim == 1: # Check if the embedding is 1D
+        x = x.reshape(1, -1)  # Reshape if necessary
+
+    return np.maximum(1 - cdist(x, y, metric='cosine').flatten(), 0)
+
+# Returns a tuple of metrics: similarity, trust, weighted trust, top trust, similarity min, similarity max
+# Parameters:
+# - x is the embedding to compare
+# - embeddings is a list of known embeddings
+# - labels is a list of labels corresponding to embeddings
+# - k is the number of neighbors
+def compute_trust_metrics(x, embeddings, labels, k=20, similarity_min=0, similarity_max=1):
+    # Compute similarity
+    similarities = similarity(x, embeddings)
+    similarity_min = min(np.min(similarities), similarity_min)
+    similarity_max = max(np.max(similarities), similarity_max)
+    similarities = remapTo01(similarities, similarity_min, similarity_max)
+
+    # Get the indices of the top-k most similar embeddings
+    top_k_indices = np.argsort(similarities)[-k:][::-1]
+
+    # Get the label of the top-k neighbors
+    top_label = np.bincount(labels[top_k_indices]).argmax()
+
+    # Compute metrics: average similarity, average trust, weighted average trust
+    sum_similarities = 0.0
+    sum_trust = 0.0
+    sum_weighted_trust = 0.0
+    for i in range(k):
+        # Compute sums
+        sim = similarities[top_k_indices[i]]
+        tr = trust(labels[top_k_indices[i]])
+        w_tr = sim * tr
+
+        sum_similarities += sim
+        sum_trust += tr
+        sum_weighted_trust += w_tr
+    
+    # Calculate metrics
+    sim = sum_similarities / k
+    tr = sum_trust / k
+    w_tr = sum_weighted_trust / sum_similarities
+    top_tr = trust(top_label)
+
+    # Return metrics
+    return sim, tr, w_tr, top_tr, similarity_min, similarity_max
+
 if __name__ == "__main__":
     processor = SpeakerRealTimeProcessing()
     processor.run()
-
-# class SpeakerRealTimeProcessing:
-#     def __init__(self, sample_rate=16000, duration=10, frame_duration=0.02, channels=1):
-#         self.sample_rate = sample_rate
-#         self.duration = duration
-#         self.frame_duration = frame_duration
-#         self.channels = channels
-#         self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=HUGGING_FACE_AUTH_TOKEN)
-#         self.inference = Inference(self.model, window="whole")
-#         self.frame_samples = int(sample_rate * frame_duration)  # Number of samples per frame
-#         self.vad = webrtcvad.Vad()
-#         # Set aggressiveness from 0 to 3 (3 is the most aggressive)
-#         self.vad.set_mode(3)
-#         # Queue to hold audio data
-#         self.audio_queue = Queue()
-        
-#         # Buffer for accumulating audio data
-#         self.audio_buffer = np.array([])
-
-# def audio_callback(indata, frames, time, status):
-#     """This is called for each audio chunk from the microphone."""
-#     global audio_buffer
-#     if status:
-#         print(status)
-
-#     if frames == frame_samples:  # Ensure frame size is as expected
-#         audio_frame = (indata[:, 0] * 32767).astype(np.int16).tobytes()
-#         is_speech = vad.is_speech(audio_frame, sample_rate)
-#         if is_speech:
-#             # Accumulate audio data in the buffer
-#             audio_buffer = np.append(audio_buffer, indata[:, 0])
-
-#             # When buffer reaches 5 seconds of audio, process it
-#             if len(audio_buffer) >= sample_rate * duration:
-#                 # Optionally resample here if needed
-#                 audio_queue.put(audio_buffer[:sample_rate * duration])
-#                 # Remove processed data from buffer
-#                 audio_buffer = audio_buffer[sample_rate * duration:]
-#                 print("Append to audio queue")
-
-# # Start recording from the microphone
-# with sd.InputStream(samplerate=sample_rate, channels=channels, callback=audio_callback, blocksize=frame_samples):
-#     print("Recording... Press Ctrl+C to stop.")
-#     try:
-#         while True:
-#             # Check if there is new data in the queue
-#             if not audio_queue.empty():
-#                 data = audio_queue.get()
-#                 # Convert numpy array to PyTorch tensor and add channel dimension
-#                 tensor_data = torch.tensor(data).unsqueeze(0).float()
-#                 # Ensure it has shape (channel, time)
-#                 embedding = inference({'waveform': tensor_data, 'sample_rate': sample_rate})
-#                 print("Computed Embedding:", embedding.shape)
-#                 print(embedding)
-#             time.sleep(0.1)
-#     except KeyboardInterrupt:
-#         print("Stopped recording.")
