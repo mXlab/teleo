@@ -160,6 +160,40 @@ class SpeakerRealTimeProcessing:
             except KeyboardInterrupt:
                 print("Stopped recording.")
 
+class SpeakerRealTimeDataManager:
+    def __init__(self, initial_embeddings=[], initial_targets=[], k_nearest_neighbors=20, similarity_min=9999, similarity_max=-9999):
+        # Initialize with initial data.
+        self.embeddings = np.array(initial_embeddings)
+        self.targets = np.array(initial_targets)
+
+        # Initialize k nearest neighbors.
+        self.k_nearest_neighbors = k_nearest_neighbors
+
+        # Calculate similarity min and max over all data.
+        similarities = np.array([])
+        for i in range(self.embeddings.shape[0]-1):
+            similarities = np.append(similarities, similarity(self.embeddings[i], self.embeddings[i+1:]))
+  
+        self.similarity_min = min(np.min(similarities), similarity_min)
+        self.similarity_max = max(np.max(similarities), similarity_max)
+
+    def get_trust_metrics(self, x):
+        # Compute metrics.
+        similarity, trust, weighted_trust, top_trust, similarity_min, similarity_max = \
+            compute_trust_metrics(x, self.embeddings, self.targets, k=self.k_nearest_neighbors, similarity_min=self.similarity_min, similarity_max=self.similarity_max)
+        
+        # Adjust min and max.
+        self.similarity_min = min(similarity_min, self.similarity_min)
+        self.similarity_max = max(similarity_max, self.similarity_max)
+
+        return similarity, trust, weighted_trust, top_trust
+    
+    def add_data(self, x, target):
+        # Add data.
+        self.embeddings = np.append(self.embeddings, x, axis=0)
+        # Add target.
+        self.targets = np.append(self.targets, target)
+
 # Define the trust function based on label
 def trust(label):
     return label - 1

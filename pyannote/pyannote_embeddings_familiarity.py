@@ -51,47 +51,13 @@ def get_data(dataset):
 
 known_data, known_targets = get_data(dataset)
 
-def get_similarity_min_max(embeddings):
-  similarities = np.array([])
-  for i in range(embeddings.shape[0]-1):
-    similarities = np.append(similarities, similarity(embeddings[i], embeddings[i+1:]))
-  
-  return np.min(similarities), np.max(similarities)
+def process_embedding(embedding):
+    similarity, trust, weighted_trust, top_trust = real_time_manager.get_trust_metrics(embedding)
+    print(f"Similarity: {similarity}\nTrust: {trust}\nWeighted Trust: {weighted_trust}\nTop Trust: {top_trust}")
 
-similarity_min, similarity_max = get_similarity_min_max(known_data)
+real_time_manager = SpeakerRealTimeDataManager(initial_embeddings=known_data, initial_targets=known_targets, k_nearest_neighbors=k_nearest_neighbors)
 
-# Compute distances
-def familiarity(test, known):
-
-  similarity = 1 - cdist(test, known, metric = 'cosine')
-
-  # Sort distances ascendingly along each row
-  nearest_similarity = np.sort(similarity, axis=1)[:, -k_nearest_neighbors:]  # take k smallest distances
-  # Compute average for each row
-  avg_nearest_similarity = np.mean(nearest_similarity, axis=1)
-  # avg_nearest_similarity = np.max(similarity)
-
-  return avg_nearest_similarity
-
-def assess_familiarity(embedding):
-  embedding = np.atleast_2d(embedding)
-  familiarity_score = familiarity(embedding, known_data)
-  known_data = np.vstack([known_data, embedding])
-  print(familiarity_score)
-
-def compute_scores(embedding):
-    global similarity_min, similarity_max
-    similarity, trust, weighted_trust, top_trust, similarity_min, similarity_max = \
-      compute_trust_metrics(embedding, known_data, known_targets, k=k_nearest_neighbors, similarity_min=similarity_min, similarity_max=similarity_max)
-    # print(f"Similarity: {similarity}\nTrust: {trust}\nWeighted Trust: {weighted_trust}\nTop Trust: {top_trust}")
-
-# import matplotlib.pyplot as plt
-# import seaborn as sns
-
-# sns.heatmap(familiarity_scores)
-# plt.show()
-
-real_time_tester = SpeakerRealTimeProcessing(callback=compute_scores)
+real_time_tester = SpeakerRealTimeProcessing(callback=process_embedding, duration=1)
 real_time_tester.run()
 
 # import matplotlib.pyplot as plt
