@@ -44,7 +44,7 @@ class OscHelper:
             self.client_redirect = BroadcastOSCClient(redirect_ip, int(redirect_port))
         else:
             self.client_redirect = None
-        osc_udp_server("127.0.0.1", int(recv_port), self.server_name())
+        osc_udp_server("0.0.0.0", int(recv_port), self.server_name())
 
         osc_method("*", self.dispatch, argscheme=osm.OSCARG_ADDRESS + osm.OSCARG_SRCIDENT + osm.OSCARG_DATAUNPACK)
         self.maps = {}
@@ -80,13 +80,12 @@ class OscHelper:
 
     # Dispatches OSC message to appropriate function, if it corresponds to helper.
     def dispatch(self, address, srcident, data):
-        print("Received {} from {}".format(address, srcident))
         # Redirect
         if self.client_redirect is not None:
             self.client_redirect.send_message(address, data)
         # Check if address matches and if IP corresponds: if so, call mapped function.
         ip, __ = srcident
-        if address in self.maps and (ip == self.ip or (ip == '127.0.0.1' and self.ip == 'localhost')):
+        if address in self.maps:# and (ip == self.ip or (ip == '127.0.0.1' and self.ip == 'localhost')):
             item = self.maps[address]
             func = item['function']
             if item['extra'] is None:
