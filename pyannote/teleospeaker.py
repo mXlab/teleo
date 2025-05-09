@@ -17,7 +17,8 @@ from scipy.spatial.distance import cdist
 HUGGING_FACE_AUTH_TOKEN = ""
 
 class SpeakerEmbeddingDataset(Dataset):
-    def __init__(self, file_paths, labels=False, sample_rate=48000, chunk_duration=1, chunk_overlap=0, regression_model=False):
+    def __init__(self, file_paths, labels=False, sample_rate=48000, chunk_duration=1, 
+                 chunk_overlap=0, regression_model=False, model_path="pyannote/embedding", hugging_face_auth_token=""):
         super(SpeakerEmbeddingDataset, self).__init__()
         self.file_paths = file_paths
         self.labels = labels
@@ -82,11 +83,12 @@ class SpeakerEmbeddingDataset(Dataset):
             return torch.tensor(self.embeddings[idx])
 
 class SpeakerRealTimeProcessing:
-    def __init__(self, sample_rate=48000, duration=3, frame_duration=0.02, vad_mode=3, callback=None):
+    def __init__(self, sample_rate=48000, duration=3, frame_duration=0.02, vad_mode=3, callback=None, model_path="pyannote/embedding", hugging_face_auth_token=""):
         self.sample_rate = sample_rate
         self.duration = duration
         self.frame_duration = frame_duration
         self.frame_samples = int(sample_rate * frame_duration)
+        self.samples = int(sample_rate * duration)
         self.channels = 1
 
         self.vad = webrtcvad.Vad()
@@ -130,14 +132,14 @@ class SpeakerRealTimeProcessing:
                 self.audio_buffer = np.append(self.audio_buffer, indata[:, 0])
 
                 # If audio buffer is full, put it in the queue and save to file.
-                if len(self.audio_buffer) >= self.sample_rate * self.duration:
+                if len(self.audio_buffer) >= self.samples:
                     # Put audio buffer in queue.
-                    self.audio_queue.put(self.audio_buffer[:self.sample_rate * self.duration])
-                    # Save to file.
-                    filename = os.path.join("samples", f"recording_{int(time.time() * 1000)}.wav")
-                    self.save_audio_to_file(filename, self.audio_buffer[:self.sample_rate * self.duration])
+                    self.audio_queue.put(self.audio_buffer[:self.samples])
+                    # # Save to file.
+                    # filename = os.path.join("samples", f"recording_{int(time.time() * 1000)}.wav")
+                    # self.save_audio_to_file(filename, self.audio_buffer[:self.samples])
                     # Reset buffer.
-                    self.audio_buffer = self.audio_buffer[self.sample_rate * self.duration:]
+                    self.audio_buffer = self.audio_buffer[self.samples:]
 
     def process_audio(self, data):
         tensor_data = torch.tensor(data).unsqueeze(0).float()
@@ -196,6 +198,7 @@ class SpeakerRealTimeDataManager:
         self.current_sample = embedding, audio_data, time.time()
 
     def add_current_sample(self, reward):
+        print("Adding current sample: {} {}".format(reward, self.current_sample))
         self.add_data(self.current_sample[0], label(reward))
         # TODO: Save to file
         # filename = os.path.join("samples", f"recording_{int(time.time() * 1000)}.wav")
