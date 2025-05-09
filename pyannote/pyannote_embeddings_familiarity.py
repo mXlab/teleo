@@ -1,11 +1,23 @@
 import argparse
+import signal
+import time
+import sys
 import pandas as pd
 import numpy as np
 from scipy.spatial.distance import cdist
 import os
-import glob
 
 from teleospeaker import *
+from messaging import *
+
+def interrupt(signup, frame):
+    global client, server
+    print("Exiting program...")
+    osc_terminate()
+    sys.exit()
+
+signal.signal(signal.SIGINT, interrupt)
+signal.signal(signal.SIGTERM, interrupt)
 
 # Parse CLI arguments
 parser = argparse.ArgumentParser(description="Train a simple familiarity identification system.")
@@ -14,6 +26,9 @@ parser.add_argument("--dataset-chunk-overlap", '-dco', type=float, default=0.5, 
 parser.add_argument("--csv-path", '-csv', type=str, default="./Training/SoundsFilesClasser.csv", help="Path to the CSV file containing file names and labels.")
 parser.add_argument("--voices-path", '-vp', type=str, default="./samples", help="Path to the folder containing audio files.")
 parser.add_argument("--k-nearest-neighbors", '-k', type=int, default=20, help="Number of nearest neighbors.")
+parser.add_argument("--osc-ip", '-oip', type=str, default="255.255.255.255", help="OSC remote IP.")
+parser.add_argument("--osc-send-port", '-osp', type=int, default=7777, help="OSC send port")
+parser.add_argument("--osc-receive-port", '-orp', type=int, default=7070, help="OSC receive port")
 args = parser.parse_args()
 
 # Use parsed arguments
@@ -23,6 +38,16 @@ dataset_chunk_overlap_val = args.dataset_chunk_overlap
 csv_path = args.csv_path
 voices_path = args.voices_path
 k_nearest_neighbors = args.k_nearest_neighbors
+
+# OSC setup
+osc_startup()
+
+def receive_reward(reward):
+  print(f"Received reward: {reward}")
+  real_time_manager.add_current_embedding(reward)
+
+osc = OscHelper("main", args.osc_ip, args.osc_send_port, args.osc_receive_port)
+osc.map("/reward", receive_reward)
 
 # Read the CSV file
 csv_data = pd.read_csv(csv_path)
@@ -53,12 +78,23 @@ known_data, known_targets = get_data(dataset)
 
 def process_embedding(embedding):
     similarity, trust, weighted_trust, top_trust = real_time_manager.get_trust_metrics(embedding)
+    real_time_manager.register_current_sample(embedding)
+
+    osc.send_bundle(
+       {
+        "/new-sample" : [],
+        "/similarity": similarity.tolist(),
+        "/mean-trust": trust.tolist(),
+        "/weighted-trust": weighted_trust.tolist(),
+        "/top-trust": top_trust.tolist(),
+       }
+    )
     print(f"Similarity: {similarity}\nTrust: {trust}\nWeighted Trust: {weighted_trust}\nTop Trust: {top_trust}")
 
 real_time_manager = SpeakerRealTimeDataManager(initial_embeddings=known_data, initial_targets=known_targets, k_nearest_neighbors=k_nearest_neighbors)
 
 real_time_tester = SpeakerRealTimeProcessing(callback=process_embedding, duration=1)
-real_time_tester.run()
+real_time_tester.run(callback=osc_process)
 
 # import matplotlib.pyplot as plt
 # import seaborn as sns

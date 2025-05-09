@@ -145,7 +145,7 @@ class SpeakerRealTimeProcessing:
         if self.callback:
             self.callback(x)
     
-    def run(self):
+    def run(self, callback=None):
         print("Recording... Press Ctrl+C to stop.")
         with sd.InputStream(samplerate=self.sample_rate,
                             channels=self.channels,
@@ -153,10 +153,12 @@ class SpeakerRealTimeProcessing:
                             blocksize=self.frame_samples):
             try:
                 while True:
+                    if callback:
+                        callback()
                     if not self.audio_queue.empty():
                         data = self.audio_queue.get()
                         self.process_audio(data)
-                    time.sleep(0.1)
+                    # time.sleep(0.1)
             except KeyboardInterrupt:
                 print("Stopped recording.")
 
@@ -177,6 +179,8 @@ class SpeakerRealTimeDataManager:
         self.similarity_min = min(np.min(similarities), similarity_min)
         self.similarity_max = max(np.max(similarities), similarity_max)
 
+        self.current_sample = None
+
     def get_trust_metrics(self, x):
         # Compute metrics.
         similarity, trust, weighted_trust, top_trust, similarity_min, similarity_max = \
@@ -187,7 +191,17 @@ class SpeakerRealTimeDataManager:
         self.similarity_max = max(similarity_max, self.similarity_max)
 
         return similarity, trust, weighted_trust, top_trust
-    
+
+    def register_current_sample(self, embedding, audio_data=None):
+        self.current_sample = embedding, audio_data, time.time()
+
+    def add_current_sample(self, reward):
+        self.add_data(self.current_sample[0], label(reward))
+        # TODO: Save to file
+        # filename = os.path.join("samples", f"recording_{int(time.time() * 1000)}.wav")
+        # self.save_audio_to_file(filename, self.audio_buffer[:self.sample_rate * self.duration])
+
+
     def add_data(self, x, target):
         # Add data.
         self.embeddings = np.append(self.embeddings, x, axis=0)
@@ -197,6 +211,9 @@ class SpeakerRealTimeDataManager:
 # Define the trust function based on label
 def trust(label):
     return label - 1
+
+def label(trust):
+    return round(trust + 1)
 
 def remapTo01(x, from_min, from_max):
     return (x - from_min) / (from_max - from_min)
