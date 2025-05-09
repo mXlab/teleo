@@ -162,5 +162,5 @@ cython_debug/
 old/
 /td/Backup
 /td/logs
-/td/teleo_main.#.toe
+/td/teleo_main.*.toe
 .DS_Store
