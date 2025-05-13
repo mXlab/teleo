@@ -13,22 +13,34 @@ import csv
 import random
 from scipy.spatial.distance import cdist
 
-# Set the path to the Hugging Face authentication token
-HUGGING_FACE_AUTH_TOKEN = ""
-
+# A class to represent a dataset of speaker embeddings based on audio files.
 class SpeakerEmbeddingDataset(Dataset):
+    # Initialize the dataset.
+    # 
+    # Args:
+    #   file_paths (list): A list of file paths to the audio files.
+    #   labels (list, optional): A list of labels for each audio file. Defaults to False.
+    #   sample_rate (int, optional): The sample rate of the audio files. Defaults to 48000.
+    #   chunk_duration (float, optional): The duration of each chunk of audio. Defaults to 1.
+    #   chunk_overlap (float, optional): The overlap of each chunk of audio as percentage. Defaults to 0.
+    #   regression_model (bool, optional): Whether to use a regression model or classification model. Defaults to False.
+    #   model_path (str, optional): The path to the embeddings model. Defaults to "pyannote/embedding".
+    #   hugging_face_auth_token (str, optional): The Hugging Face authentication token. Defaults to "".
     def __init__(self, file_paths, labels=False, sample_rate=48000, chunk_duration=1, 
                  chunk_overlap=0, regression_model=False, model_path="pyannote/embedding", hugging_face_auth_token=""):
         super(SpeakerEmbeddingDataset, self).__init__()
+        # Initialize properties.
         self.file_paths = file_paths
         self.labels = labels
         self.sample_rate = sample_rate
         self.chunk_duration = chunk_duration
         self.chunk_overlap = chunk_overlap
         self.regression_model = regression_model
-        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=HUGGING_FACE_AUTH_TOKEN)
+        # Load the embeddings model.
+        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=hugging_face_auth_token)
         self.inference = Inference(self.model, window="whole")
         self.vad = webrtcvad.Vad(3)
+        # Preprocess the files.
         if self.labels:
             self.embeddings, self.targets = self.preprocess_files()
         else:
@@ -82,8 +94,20 @@ class SpeakerEmbeddingDataset(Dataset):
         else:
             return torch.tensor(self.embeddings[idx])
 
+# A class to implement real-time processing of speaker embeddings.
 class SpeakerRealTimeProcessing:
+    # Initialize the real-time processing.
+    # 
+    # Args:
+    #   sample_rate (int, optional): The sample rate of the audio files. Defaults to 48000.
+    #   duration (int, optional): The duration of the audio files. Defaults to 3.
+    #   frame_duration (float, optional): The duration of each frame of audio. Defaults to 0.02.
+    #   vad_mode (int, optional): The mode of the voice activity detection. Defaults to 3.
+    #   callback (function, optional): The callback function to call when a speaker is detected. Defaults to None.
+    #   model_path (str, optional): The path to the embeddings model. Defaults to "pyannote/embedding".
+    #   hugging_face_auth_token (str, optional): The Hugging Face authentication token. Defaults to "".
     def __init__(self, sample_rate=48000, duration=3, frame_duration=0.02, vad_mode=3, callback=None, model_path="pyannote/embedding", hugging_face_auth_token=""):
+        # Initialize properties.
         self.sample_rate = sample_rate
         self.duration = duration
         self.frame_duration = frame_duration
@@ -94,13 +118,14 @@ class SpeakerRealTimeProcessing:
         self.vad = webrtcvad.Vad()
         self.vad.set_mode(vad_mode)
 
-        self.callback = callback
-
-        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=HUGGING_FACE_AUTH_TOKEN)
-        self.inference = Inference(self.model, window="whole")
-
         self.audio_queue = Queue()
         self.audio_buffer = np.array([])
+
+        self.callback = callback
+
+        # Load the embeddings model.
+        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=hugging_face_auth_token)
+        self.inference = Inference(self.model, window="whole")
 
         # Lazy assignment for stream so it can be stopped from outside
         self.stream = None

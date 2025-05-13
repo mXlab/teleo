@@ -73,6 +73,7 @@ labels = csv_data['label'].tolist()
 print("Dataset creation")
 dataset = SpeakerEmbeddingDataset(file_paths, labels=labels, chunk_duration=dataset_chunk_duration_val, chunk_overlap=dataset_chunk_overlap_val, model_path=model_path, hugging_face_auth_token=hugging_face_auth_token)
 
+# Extract embeddings and targets from datasest.
 def get_data(dataset):
   embeddings = []
   targets = []
@@ -86,10 +87,13 @@ def get_data(dataset):
 
 known_data, known_targets = get_data(dataset)
 
+# Callback for real-time processing of new embedding.
 def process_embedding(embedding):
+    # Compute metrics.
     similarity, trust, weighted_trust, top_trust = real_time_manager.get_trust_metrics(embedding)
     real_time_manager.register_current_sample(embedding)
 
+    # Send metrics.
     osc.send_bundle(
        {
         "/new-sample" : [],
@@ -106,9 +110,3 @@ real_time_manager = SpeakerRealTimeDataManager(initial_embeddings=known_data, in
 
 real_time_tester = SpeakerRealTimeProcessing(callback=process_embedding, duration=sample_duration, model_path=model_path, hugging_face_auth_token=hugging_face_auth_token)
 real_time_tester.run(callback=osc_process)
-
-# import matplotlib.pyplot as plt
-# import seaborn as sns
-
-# sns.heatmap(inv_dist)
-# plt.show()
